@@ -5,6 +5,15 @@ SmartSpend AI is a modern personal finance management platform built with Python
 Designed for students and young professionals, SmartSpend AI provides a clean user experience with powerful analytics to support smarter financial decisions.
 
 ---
+## 🌐 Live Demo
+
+🔗 https://smartspend-ai-c6f7.onrender.com
+
+## 📂 GitHub Repository
+
+🔗 https://github.com/Nancydua11/smartspend-ai
+
+---
 
 ## 🚀 Features
 
