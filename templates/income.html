@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Income{% endblock %}
+{% block page_title %}Income{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Income</h1>
+    <p>Track all your income sources</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addIncomeModal')">
+    <i class="fa-solid fa-plus"></i> Add Income
+  </button>
+</div>
+
+<!-- Summary -->
+<div class="stat-cards" style="margin-bottom:24px;">
+  <div class="stat-card income" style="grid-column:span 2;">
+    <div class="stat-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+    <div>
+      <div class="stat-label">Total Income Recorded</div>
+      <div class="stat-value">{{ sym }}{{ "{:,.0f}".format(total) }}</div>
+      <div class="stat-sub">All time</div>
+    </div>
+  </div>
+  <div class="stat-card" style="grid-column:span 2;">
+    <div class="stat-icon" style="background:rgba(6,182,212,0.15);color:var(--cyan);"><i class="fa-solid fa-list"></i></div>
+    <div>
+      <div class="stat-label">Total Records</div>
+      <div class="stat-value">{{ incomes|length }}</div>
+      <div class="stat-sub">Income entries</div>
+    </div>
+  </div>
+</div>
+
+<!-- Income Table -->
+<div class="card" style="padding:0;overflow:hidden;">
+  {% if incomes %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Source</th>
+          <th>Date</th>
+          <th>Amount</th>
+          <th>Notes</th>
+          <th style="text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in incomes %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ i.title }}</div>
+            {% if i.is_recurring %}<span style="font-size:11px;color:var(--cyan);"><i class="fa-solid fa-rotate"></i> Recurring</span>{% endif %}
+          </td>
+          <td><span class="badge badge-{{ i.source.lower() }}">{{ i.source }}</span></td>
+          <td style="color:var(--text-muted);font-size:13px;">{{ i.date.strftime('%d %b %Y') }}</td>
+          <td class="amount-positive">+ {{ sym }}{{ "{:,.0f}".format(i.amount) }}</td>
+          <td style="color:var(--text-muted);font-size:13px;">{{ i.notes or '—' }}</td>
+          <td>
+            <div style="display:flex;justify-content:flex-end;">
+              <form id="delinc_{{ i.id }}" method="POST" action="{{ url_for('delete_income', inc_id=i.id) }}">
+                <button type="button" class="btn btn-danger btn-sm btn-icon" onclick="confirmDelete('delinc_{{ i.id }}')" title="Delete">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:60px 20px;">
+    <i class="fa-solid fa-sack-dollar"></i>
+    <p>No income records yet.</p>
+    <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="openModal('addIncomeModal')">
+      <i class="fa-solid fa-plus"></i> Add Income
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Income Modal -->
+<div class="overlay" id="modalOverlay" onclick="closeModal('addIncomeModal');this.classList.remove('show');"></div>
+<div class="modal" id="addIncomeModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-plus" style="color:var(--accent);margin-right:8px;"></i>Add Income</h3>
+      <button class="modal-close" onclick="closeModal('addIncomeModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form method="POST" action="{{ url_for('add_income') }}">
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input type="text" name="title" class="form-control" placeholder="e.g. Monthly Salary" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount ({{ sym }}) *</label>
+          <input type="number" name="amount" class="form-control" placeholder="0.00" min="0.01" step="0.01" required>
+        </div>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">Source *</label>
+          <select name="source" class="form-control" required>
+            {% for s in sources %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date *</label>
+          <input type="date" name="date" class="form-control" value="{{ '' }}" required
+            id="incomeDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" class="form-control" placeholder="Optional notes..."></textarea>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;">
+          <input type="checkbox" name="is_recurring" style="width:16px;height:16px;">
+          <span>Recurring income (monthly)</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;justify-content:center;">
+          <i class="fa-solid fa-plus"></i> Add Income
+        </button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('addIncomeModal')" style="flex:1;justify-content:center;">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Set today's date on modal open
+  document.getElementById('incomeDate').value = new Date().toISOString().split('T')[0];
+
+  // Show overlay with modal
+  const origOpen = window.openModal;
+  window.openModal = function(id) {
+    origOpen(id);
+    document.getElementById('modalOverlay').classList.add('show');
+  };
+  window.closeModal = function(id) {
+    document.getElementById(id).classList.remove('open');
+    document.getElementById(id).style.display = 'none';
+    document.getElementById('modalOverlay').classList.remove('show');
+  };
+</script>
+{% endblock %}

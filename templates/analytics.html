@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h1>Analytics</h1>
+    <p>Deep dive into your financial patterns</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <a href="{{ url_for('export_excel') }}" class="btn btn-outline">
+      <i class="fa-solid fa-file-excel"></i> Excel
+    </a>
+    <a href="{{ url_for('export_pdf') }}" class="btn btn-outline">
+      <i class="fa-solid fa-file-pdf"></i> PDF
+    </a>
+  </div>
+</div>
+
+<!-- AI Health Row -->
+<div class="grid-3" style="margin-bottom:20px;">
+  <div class="card" style="text-align:center;">
+    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Financial Health</div>
+    <div style="font-family:'Syne',sans-serif;font-size:42px;font-weight:800;color:{{ ai.health_color }};">{{ ai.health_score }}</div>
+    <div style="font-size:13px;color:{{ ai.health_color }};font-weight:600;">{{ ai.health_label }}</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">This Month Income</div>
+    <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--green);">{{ sym }}{{ "{:,.0f}".format(ai.total_income) }}</div>
+    <div style="font-size:13px;color:var(--text-muted);">Total earned</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">This Month Expenses</div>
+    <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--red);">{{ sym }}{{ "{:,.0f}".format(ai.total_expense) }}</div>
+    <div style="font-size:13px;color:var(--text-muted);">Total spent</div>
+  </div>
+</div>
+
+<!-- Main Charts -->
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-chart-line" style="color:var(--accent);margin-right:6px;"></i>Income vs Expenses Trend (12 Months)</div>
+    <div class="chart-container" style="height:280px;"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-chart-pie" style="color:var(--accent);margin-right:6px;"></i>This Month — Spending by Category</div>
+    <div class="chart-container" style="height:280px;">
+      {% if category_data and category_data != '{}' %}
+        <canvas id="pieChart"></canvas>
+      {% else %}
+        <div class="empty-state"><i class="fa-solid fa-chart-pie"></i><p>No expenses this month</p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-chart-bar" style="color:var(--accent);margin-right:6px;"></i>Monthly Comparison (Bar Chart)</div>
+    <div class="chart-container" style="height:260px;"><canvas id="barChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-chart-pie" style="color:var(--accent);margin-right:6px;"></i>All-Time Category Breakdown</div>
+    <div class="chart-container" style="height:260px;">
+      {% if yearly_category and yearly_category != '{}' %}
+        <canvas id="yearlyPie"></canvas>
+      {% else %}
+        <div class="empty-state"><i class="fa-solid fa-chart-pie"></i><p>No data yet</p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- AI Insights -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title"><i class="fa-solid fa-robot" style="color:var(--accent);margin-right:6px;"></i>AI Spending Insights</div>
+  <div class="grid-2">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;">⚠️ Alerts</div>
+      {% if ai.alerts %}
+        {% for a in ai.alerts %}
+        <div class="ai-alert {{ a.type }}">{{ a.icon }} {{ a.msg }}</div>
+        {% endfor %}
+      {% else %}
+        <div class="ai-alert tip">✅ No spending alerts. Your finances look healthy!</div>
+      {% endif %}
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;">💡 Smart Tips</div>
+      {% for tip in ai.tips %}
+      <div class="ai-alert tip">{{ tip.icon }} {{ tip.msg }}</div>
+      {% endfor %}
+    </div>
+  </div>
+  <div style="margin-top:16px;padding:14px;background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.08));border-radius:12px;border:1px solid rgba(99,102,241,0.2);">
+    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px;">
+      <i class="fa-solid fa-wand-magic-sparkles"></i> Next Month Prediction
+    </div>
+    <div style="font-size:22px;font-family:'Syne',sans-serif;font-weight:800;">
+      {{ sym }}{{ "{:,.0f}".format(ai.prediction) }}
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);">Based on your recent 3-month average spending pattern</div>
+  </div>
+</div>
+
+<!-- Category Breakdown Table -->
+<div class="card">
+  <div class="card-title"><i class="fa-solid fa-table" style="color:var(--accent);margin-right:6px;"></i>Category Breakdown — This Month</div>
+  {% set cat_data = category_data|tojson|safe %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Category</th><th>Amount Spent</th><th>Share</th><th>Visual</th></tr>
+      </thead>
+      <tbody id="catTable">
+        <!-- filled by JS -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const monthlyData   = {{ monthly_data|safe }};
+const categoryData  = {{ category_data|safe }};
+const yearlyData    = {{ yearly_category|safe }};
+const sym = "{{ sym }}";
+
+buildTrendChart('trendChart', monthlyData);
+buildPieChart('pieChart', categoryData);
+buildMonthlyChart('barChart', monthlyData);
+buildPieChart('yearlyPie', yearlyData);
+
+// Category table
+const tbody = document.getElementById('catTable');
+const total = Object.values(categoryData).reduce((a,b)=>a+b,0);
+if (tbody && total > 0) {
+  const sorted = Object.entries(categoryData).sort((a,b)=>b[1]-a[1]);
+  sorted.forEach(([cat, amt]) => {
+    const pct = ((amt/total)*100).toFixed(1);
+    tbody.innerHTML += `
+      <tr>
+        <td><span class="badge badge-${cat.toLowerCase()}">${cat}</span></td>
+        <td class="amount-negative" style="white-space:nowrap;">${sym}${amt.toLocaleString('en-IN')}</td>
+        <td style="color:var(--text-muted);">${pct}%</td>
+        <td style="width:200px;">
+          <div class="progress-bar">
+            <div class="progress-fill progress-danger" style="width:${pct}%;"></div>
+          </div>
+        </td>
+      </tr>`;
+  });
+} else if (tbody) {
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px;">No expense data for this month</td></tr>';
+}
+</script>
+{% endblock %}

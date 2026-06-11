@@ -1,0 +1,661 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+{# ── Top greeting bar ── #}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+  <div>
+    <h1 id="greeting" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;">
+      Hey, {{ current_user.name.split()[0] }} 👋
+    </h1>
+    <p style="color:var(--text-muted);font-size:14px;margin-top:3px;">
+      <i class="fa-solid fa-clock" style="color:var(--accent);"></i>
+      <span id="liveClock" style="color:var(--accent);font-weight:600;margin-left:4px;letter-spacing:.03em;"></span>
+      &nbsp;·&nbsp; {{ today.strftime('%A, %d %B %Y') }}
+    </p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="btn btn-primary" onclick="openModal('addExpModal')">
+      <i class="fa-solid fa-minus-circle"></i> Add Expense
+    </button>
+    <button class="btn btn-success" onclick="openModal('addIncModal')">
+      <i class="fa-solid fa-plus-circle"></i> Add Income
+    </button>
+    <button class="btn btn-outline" id="refreshBtn" onclick="doRefresh()" title="Refresh">
+      <i class="fa-solid fa-rotate-right"></i>
+    </button>
+  </div>
+</div>
+
+
+{# ── Onboarding banner: only shown when user has NO data ── #}
+{% if total_income == 0 and total_expense == 0 and not recent_expenses %}
+<div style="
+  background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(16,185,129,.08));
+  border:1px solid rgba(124,58,237,.25);
+  border-radius:20px; padding:36px 40px;
+  margin-bottom:24px; display:flex; align-items:center; gap:32px;
+  flex-wrap:wrap;">
+  <div style="font-size:56px; flex-shrink:0;">👋</div>
+  <div style="flex:1; min-width:240px;">
+    <h2 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;">
+      Welcome, {{ current_user.name.split()[0] }}! Your dashboard is empty.
+    </h2>
+    <p style="color:var(--text-muted);font-size:14px;line-height:1.7;margin-bottom:18px;">
+      Start by adding your <strong>income</strong> for this month, then log your <strong>expenses</strong>.
+      Your charts, AI health score and budget progress will all appear automatically.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-success" onclick="openModal('addIncModal')">
+        <i class="fa-solid fa-plus-circle"></i> Add This Month's Income
+      </button>
+      <button class="btn btn-primary" onclick="openModal('addExpModal')">
+        <i class="fa-solid fa-minus-circle"></i> Add First Expense
+      </button>
+    </div>
+  </div>
+  <div style="flex-shrink:0;">
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted);">
+        <span style="width:24px;height:24px;background:rgba(16,185,129,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--green);font-size:11px;flex-shrink:0;"><i class="fa-solid fa-check"></i></span>
+        Account created ✓
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted);">
+        <span style="width:24px;height:24px;background:rgba(245,158,11,.15);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--amber);font-size:11px;flex-shrink:0;"><i class="fa-solid fa-clock"></i></span>
+        Add income &nbsp;← next
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted);">
+        <span style="width:24px;height:24px;background:rgba(148,163,184,.1);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:11px;flex-shrink:0;"><i class="fa-solid fa-circle"></i></span>
+        Log expenses
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted);">
+        <span style="width:24px;height:24px;background:rgba(148,163,184,.1);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:11px;flex-shrink:0;"><i class="fa-solid fa-circle"></i></span>
+        See AI insights
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Stat cards ── #}
+<div class="stat-cards" style="margin-bottom:20px;">
+
+  <div class="stat-card income">
+    <div class="stat-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+    <div>
+      <div class="stat-label">Total Income</div>
+      <div class="stat-value" id="valIncome">{{ sym }}{{ "{:,.0f}".format(total_income) }}</div>
+      <div class="stat-sub">This month</div>
+    </div>
+  </div>
+
+  <div class="stat-card expense">
+    <div class="stat-icon"><i class="fa-solid fa-arrow-trend-down"></i></div>
+    <div>
+      <div class="stat-label">Total Expenses</div>
+      <div class="stat-value" id="valExpense">{{ sym }}{{ "{:,.0f}".format(total_expense) }}</div>
+      <div class="stat-sub">This month</div>
+    </div>
+  </div>
+
+  <div class="stat-card balance">
+    <div class="stat-icon"><i class="fa-solid fa-wallet"></i></div>
+    <div>
+      <div class="stat-label">Net Balance</div>
+      <div class="stat-value" id="valBalance"
+        style="color:{% if balance>=0 %}var(--green){% else %}var(--red){% endif %}">
+        {{ sym }}{{ "{:,.0f}".format(balance|abs) }}
+      </div>
+      <div class="stat-sub" id="lblBalance">{% if balance>=0 %}Surplus{% else %}Deficit{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="stat-card savings">
+    <div class="stat-icon"><i class="fa-solid fa-piggy-bank"></i></div>
+    <div>
+      <div class="stat-label">Savings Rate</div>
+      <div class="stat-value" id="valSavings">{{ savings_pct }}%</div>
+      <div class="stat-sub">
+        {% if savings_pct>=20 %}Excellent 🎉{% elif savings_pct>=10 %}Good 👍{% elif savings_pct>0 %}Needs Work{% else %}No savings yet{% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Charts ── #}
+<div class="grid-12" style="margin-bottom:20px;">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="card-title" style="margin:0;">
+        <i class="fa-solid fa-chart-bar" style="color:var(--accent);margin-right:6px;"></i>Income vs Expenses
+      </div>
+      <select id="monthRange" class="form-control"
+        style="width:110px;padding:5px 8px;font-size:12px;" onchange="refreshMonthlyChart()">
+        <option value="3">3 Months</option>
+        <option value="6" selected>6 Months</option>
+        <option value="12">12 Months</option>
+      </select>
+    </div>
+    <div style="height:250px;"><canvas id="monthlyChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <i class="fa-solid fa-chart-pie" style="color:var(--accent);margin-right:6px;"></i>Category Breakdown
+    </div>
+    <div style="height:250px;" id="pieWrap">
+      {% if category_data and category_data != '{}' %}
+        <canvas id="pieChart"></canvas>
+      {% else %}
+        <div class="empty-state" id="pieEmpty" style="padding:50px 0;">
+          <i class="fa-solid fa-chart-pie"></i>
+          <p>Add expenses to see chart</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── AI health + Budget ── #}
+<div class="grid-2" style="margin-bottom:20px;">
+
+  <div class="card">
+    <div class="card-title">
+      <i class="fa-solid fa-robot" style="color:var(--accent);margin-right:6px;"></i>AI Financial Health
+    </div>
+    <div style="display:flex;gap:20px;align-items:flex-start;">
+      <div style="flex-shrink:0;text-align:center;">
+        <div style="position:relative;width:100px;height:100px;">
+          <svg style="transform:rotate(-90deg)" width="100" height="100" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" stroke-width="9"/>
+            <circle cx="50" cy="50" r="40" fill="none"
+              stroke="{{ ai.health_color }}" stroke-width="9" stroke-linecap="round"
+              stroke-dasharray="251.3"
+              stroke-dashoffset="{{ 251.3 - (251.3 * ai.health_score / 100) }}"
+              style="transition:stroke-dashoffset 1.5s ease;"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <span style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:{{ ai.health_color }};">{{ ai.health_score }}</span>
+            <span style="font-size:10px;color:var(--text-dim);">/100</span>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:{{ ai.health_color }};margin-top:4px;">{{ ai.health_label }}</div>
+      </div>
+      <div style="flex:1;min-width:0;">
+        {% for a in ai.alerts[:3] %}
+        <div class="ai-alert {{ a.type }}" style="margin-bottom:6px;">{{ a.icon }} {{ a.msg }}</div>
+        {% endfor %}
+        {% if not ai.alerts %}
+        <div class="ai-alert tip">✅ Finances look healthy this month!</div>
+        {% endif %}
+        <div style="margin-top:8px;padding:9px 11px;background:var(--bg-card);border-radius:9px;border:1px solid var(--border);font-size:12px;line-height:1.6;">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--accent);margin-right:5px;"></i>
+          <strong>Next month prediction:</strong> {{ sym }}{{ "{:,.0f}".format(ai.prediction) }}
+        </div>
+      </div>
+    </div>
+    {% if ai.tips %}
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      {% for t in ai.tips[:2] %}
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:5px;line-height:1.5;">{{ t.icon }} {{ t.msg }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="card-title" style="margin:0;">
+        <i class="fa-solid fa-bullseye" style="color:var(--accent);margin-right:6px;"></i>Budget Progress
+      </div>
+      <a href="{{ url_for('budget') }}" class="btn btn-outline btn-sm">Manage</a>
+    </div>
+    {% if budget_progress %}
+      {% for b in budget_progress %}
+      <div style="margin-bottom:13px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+          <span style="font-weight:500;">{{ b.category }}</span>
+          <span style="color:var(--text-muted);">
+            {{ sym }}{{ "{:,.0f}".format(b.spent) }} / {{ sym }}{{ "{:,.0f}".format(b.budget) }}
+            {% if b.pct >= 90 %}<span style="color:var(--red);margin-left:3px;">⚠️</span>{% endif %}
+          </span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill progress-{{ b.status }}" style="width:{{ b.pct }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state" style="padding:28px 0;">
+        <i class="fa-solid fa-bullseye"></i><p>No budgets set yet</p>
+        <a href="{{ url_for('budget') }}" class="btn btn-primary btn-sm" style="margin-top:10px;">Set Budgets</a>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Recent Transactions (live-updating) ── #}
+<div class="card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div class="card-title" style="margin:0;">
+      <i class="fa-solid fa-clock-rotate-left" style="color:var(--accent);margin-right:6px;"></i>
+      Recent Transactions
+      <span id="txnBadge" style="background:rgba(99,102,241,0.15);color:var(--accent);
+        font-size:11px;padding:2px 8px;border-radius:50px;margin-left:8px;font-weight:600;">
+        {{ recent_expenses|length }}
+      </span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary btn-sm" onclick="openModal('addExpModal')">
+        <i class="fa-solid fa-plus"></i> Add
+      </button>
+      <a href="{{ url_for('expenses') }}" class="btn btn-outline btn-sm">View All</a>
+    </div>
+  </div>
+
+  <div id="txnWrap">
+    {% if recent_expenses %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th><th>Category</th><th>Date</th>
+            <th>Amount</th><th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="txnBody">
+          {% for e in recent_expenses %}
+          <tr id="row{{ e.id }}">
+            <td>
+              <div style="font-weight:600;">{{ e.title }}</div>
+              {% if e.notes %}<div style="font-size:11px;color:var(--text-dim);">{{ e.notes[:42] }}</div>{% endif %}
+            </td>
+            <td><span class="badge badge-{{ e.category.lower() }}">{{ e.category }}</span></td>
+            <td style="color:var(--text-muted);font-size:13px;white-space:nowrap;">{{ e.date.strftime('%d %b %Y') }}</td>
+            <td class="amount-negative" style="font-weight:700;white-space:nowrap;">
+              &minus; {{ sym }}{{ "{:,.0f}".format(e.amount) }}
+            </td>
+            <td style="text-align:right;">
+              <div style="display:flex;gap:5px;justify-content:flex-end;">
+                <a href="{{ url_for('edit_expense', exp_id=e.id) }}" class="btn btn-outline btn-sm btn-icon" title="Edit">
+                  <i class="fa-solid fa-pen"></i>
+                </a>
+                <button class="btn btn-danger btn-sm btn-icon" onclick="ajaxDel({{ e.id }})" title="Delete">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" id="txnEmpty">
+      <i class="fa-solid fa-receipt"></i><p>No transactions yet.</p>
+      <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="openModal('addExpModal')">
+        <i class="fa-solid fa-plus"></i> Add First Expense
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+
+{# ══════════════════════════════════════════
+   ADD EXPENSE MODAL
+   ══════════════════════════════════════════ #}
+<div class="modal-overlay" id="expOvl" onclick="closeModal('addExpModal')"></div>
+<div class="modal-dialog" id="addExpModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>
+        <span class="mhicon red"><i class="fa-solid fa-minus"></i></span>
+        Quick Add Expense
+      </h3>
+      <button class="modal-close" onclick="closeModal('addExpModal')">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    {# Category pills #}
+    <div style="margin-bottom:16px;">
+      <div class="form-label" style="margin-bottom:8px;">Category</div>
+      <div id="catPills" style="display:flex;flex-wrap:wrap;gap:6px;">
+        {% set icons={'Food':'🍔','Shopping':'🛒','Bills':'📄','Travel':'✈️','Entertainment':'🎬','Education':'📚','Health':'💊','Others':'📦'} %}
+        {% for c in categories %}
+        <button type="button" class="cpill {% if loop.first %}active{% endif %}"
+          data-val="{{ c }}" onclick="pickPill(this,'expCat')">
+          {{ icons[c] }} {{ c }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <input type="hidden" id="expCat" value="{{ categories[0] }}">
+    <div class="merr" id="expErr"></div>
+
+    <div class="form-row cols-2" style="margin-bottom:12px;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Title *</label>
+        <input id="expTitle" type="text" class="form-control" placeholder="e.g. Zomato order" autocomplete="off">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Amount ({{ sym }}) *</label>
+        <input id="expAmt" type="number" class="form-control" placeholder="0" min="1" step="1">
+      </div>
+    </div>
+    <div class="form-row cols-2" style="margin-bottom:16px;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Date *</label>
+        <input id="expDate" type="date" class="form-control">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Notes</label>
+        <input id="expNotes" type="text" class="form-control" placeholder="Optional">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button id="expBtn" class="btn btn-primary" style="flex:1;justify-content:center;" onclick="submitExp()">
+        <i class="fa-solid fa-plus"></i> Add Expense
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('addExpModal')" style="flex:1;justify-content:center;">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+
+{# ══════════════════════════════════════════
+   ADD INCOME MODAL
+   ══════════════════════════════════════════ #}
+<div class="modal-overlay" id="incOvl" onclick="closeModal('addIncModal')"></div>
+<div class="modal-dialog" id="addIncModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>
+        <span class="mhicon green"><i class="fa-solid fa-plus"></i></span>
+        Add Income
+      </h3>
+      <button class="modal-close" onclick="closeModal('addIncModal')">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="merr" id="incErr"></div>
+
+    <div class="form-row cols-2" style="margin-bottom:12px;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Title *</label>
+        <input id="incTitle" type="text" class="form-control" placeholder="e.g. Monthly Salary">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Amount ({{ sym }}) *</label>
+        <input id="incAmt" type="number" class="form-control" placeholder="0" min="1" step="1">
+      </div>
+    </div>
+    <div class="form-row cols-2" style="margin-bottom:16px;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Source</label>
+        <select id="incSrc" class="form-control">
+          <option>Salary</option><option>Freelance</option><option>Business</option>
+          <option>Investment</option><option>Rental</option><option>Gift</option><option>Others</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="form-label">Date *</label>
+        <input id="incDate" type="date" class="form-control">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button id="incBtn" class="btn btn-success" style="flex:1;justify-content:center;" onclick="submitInc()">
+        <i class="fa-solid fa-plus"></i> Add Income
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('addIncModal')" style="flex:1;justify-content:center;">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+{# Toast #}
+<div id="toast">
+  <span id="toastIcon"></span><span id="toastMsg"></span>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+const SYM   = "{{ sym }}";
+let mChart  = null;
+let pChart  = null;
+let mData   = {{ monthly_data|safe }};
+let catData = {{ category_data|safe }};
+
+/* ── Live clock ────────────────────────────── */
+function tick() {
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  const el = document.getElementById('liveClock');
+  if (el) el.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const gr = document.getElementById('greeting');
+  const h = d.getHours();
+  if (gr) gr.textContent =
+    `${h<12?'Good Morning':h<17?'Good Afternoon':'Good Evening'}, {{ current_user.name.split()[0] }} 👋`;
+}
+tick(); setInterval(tick, 1000);
+
+/* ── Init ──────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  const t = new Date().toISOString().split('T')[0];
+  document.getElementById('expDate').value = t;
+  document.getElementById('incDate').value = t;
+  drawCharts();
+});
+
+function drawCharts() {
+  if (mChart) mChart.destroy();
+  if (pChart) pChart.destroy();
+  mChart = buildMonthlyChart('monthlyChart', mData);
+  if (Object.keys(catData).length > 0) pChart = buildPieChart('pieChart', catData);
+}
+
+/* ── Monthly chart range ───────────────────── */
+async function refreshMonthlyChart() {
+  const n = document.getElementById('monthRange').value;
+  try {
+    mData = await (await fetch(`/api/chart/monthly?months=${n}`)).json();
+    if (mChart) mChart.destroy();
+    mChart = buildMonthlyChart('monthlyChart', mData);
+  } catch(e){}
+}
+
+/* ── Full refresh ──────────────────────────── */
+async function doRefresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn.innerHTML = '<i class="fa-solid fa-rotate-right fa-spin"></i>';
+  btn.disabled = true;
+  try {
+    const [r1, r2, r3] = await Promise.all([
+      fetch('/api/chart/categories'),
+      fetch('/api/chart/monthly?months=6'),
+      fetch('/api/stats/summary')
+    ]);
+    catData = await r1.json();
+    mData   = await r2.json();
+    const s = await r3.json();
+    drawCharts();
+    applyStats(s);
+    toast('✅','Refreshed!');
+  } catch(e){ toast('❌','Refresh failed',true); }
+  btn.innerHTML = '<i class="fa-solid fa-rotate-right"></i>';
+  btn.disabled = false;
+}
+
+/* ── Modal open/close ──────────────────────── */
+function openModal(id) {
+  const m  = document.getElementById(id);
+  const ov = document.getElementById(id === 'addExpModal' ? 'expOvl' : 'incOvl');
+  m.classList.add('open');
+  ov.classList.add('show');
+  setTimeout(() => { const f = m.querySelector('input[type=text]'); if(f) f.focus(); }, 80);
+}
+function closeModal(id) {
+  const m  = document.getElementById(id);
+  const ov = document.getElementById(id === 'addExpModal' ? 'expOvl' : 'incOvl');
+  m.classList.remove('open');
+  ov.classList.remove('show');
+  document.getElementById('expErr').textContent = '';
+  document.getElementById('incErr').textContent = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal('addExpModal'); closeModal('addIncModal'); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='e') { e.preventDefault(); openModal('addExpModal'); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='i') { e.preventDefault(); openModal('addIncModal'); }
+});
+
+/* ── Category pills ────────────────────────── */
+function pickPill(el, hiddenId) {
+  el.closest('#addExpModal').querySelectorAll('.cpill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(hiddenId).value = el.dataset.val;
+}
+
+/* ── Submit Expense ────────────────────────── */
+async function submitExp() {
+  const title = v('expTitle'), amt = parseFloat(v('expAmt')),
+        date  = v('expDate'),  notes = v('expNotes'),
+        cat   = v('expCat');
+  if (!title)        { setErr('expErr','⚠️ Title required.'); return; }
+  if (!amt || amt<=0){ setErr('expErr','⚠️ Valid amount required.'); return; }
+  if (!date)         { setErr('expErr','⚠️ Date required.'); return; }
+  setBtnLoad('expBtn', true);
+  try {
+    const d = await post('/api/expense/add', {title, amount:amt, category:cat, date, notes});
+    if (d.success) {
+      closeModal('addExpModal');
+      clearFields(['expTitle','expAmt','expNotes']);
+      injectRow(d.expense);
+      applyStats(d.stats);
+      toast('💸', `${title} — ${SYM}${fmt(amt)} added!`);
+    } else { setErr('expErr', '❌ ' + d.error); }
+  } catch(e){ setErr('expErr','❌ Network error.'); }
+  setBtnLoad('expBtn', false, '<i class="fa-solid fa-plus"></i> Add Expense');
+}
+
+/* ── Submit Income ─────────────────────────── */
+async function submitInc() {
+  const title = v('incTitle'), amt = parseFloat(v('incAmt')),
+        src   = v('incSrc'),   date = v('incDate');
+  if (!title)        { setErr('incErr','⚠️ Title required.'); return; }
+  if (!amt || amt<=0){ setErr('incErr','⚠️ Valid amount required.'); return; }
+  setBtnLoad('incBtn', true);
+  try {
+    const d = await post('/api/income/add', {title, amount:amt, source:src, date});
+    if (d.success) {
+      closeModal('addIncModal');
+      clearFields(['incTitle','incAmt']);
+      applyStats(d.stats);
+      toast('💰', `${title} — ${SYM}${fmt(amt)} added!`);
+    } else { setErr('incErr', '❌ ' + d.error); }
+  } catch(e){ setErr('incErr','❌ Network error.'); }
+  setBtnLoad('incBtn', false, '<i class="fa-solid fa-plus"></i> Add Income');
+}
+
+/* ── AJAX delete ───────────────────────────── */
+async function ajaxDel(id) {
+  if (!confirm('Delete this transaction?')) return;
+  try {
+    const d = await post(`/api/expense/delete/${id}`, {});
+    if (d.success) {
+      const row = document.getElementById('row'+id);
+      if (row) { row.style.opacity='0'; row.style.transform='translateX(30px)'; row.style.transition='all .3s'; setTimeout(()=>row.remove(),300); }
+      applyStats(d.stats);
+      const b = document.getElementById('txnBadge');
+      if (b) b.textContent = Math.max(0, parseInt(b.textContent)-1);
+      toast('🗑️','Deleted');
+    }
+  } catch(e){ toast('❌','Failed',true); }
+}
+
+/* ── Inject new row ────────────────────────── */
+const BMAP = {Food:'food',Shopping:'shopping',Bills:'bills',Travel:'travel',
+  Entertainment:'entertainment',Education:'education',Health:'health',Others:'others'};
+function injectRow(exp) {
+  document.getElementById('txnEmpty')?.remove();
+  let tbody = document.getElementById('txnBody');
+  if (!tbody) {
+    document.getElementById('txnWrap').innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Amount</th><th style="text-align:right">Action</th></tr></thead>
+      <tbody id="txnBody"></tbody></table></div>`;
+    tbody = document.getElementById('txnBody');
+  }
+  const tr = document.createElement('tr');
+  tr.id = 'row'+exp.id;
+  tr.style.animation = 'slideIn .35s ease';
+  tr.innerHTML = `
+    <td><div style="font-weight:600;">${exp.title}</div></td>
+    <td><span class="badge badge-${BMAP[exp.category]||'others'}">${exp.category}</span></td>
+    <td style="color:var(--text-muted);font-size:13px;white-space:nowrap;">${exp.date_display}</td>
+    <td class="amount-negative" style="font-weight:700;white-space:nowrap;">&minus; ${SYM}${fmt(exp.amount)}</td>
+    <td style="text-align:right;">
+      <button class="btn btn-danger btn-sm btn-icon" onclick="ajaxDel(${exp.id})"><i class="fa-solid fa-trash"></i></button>
+    </td>`;
+  tbody.insertBefore(tr, tbody.firstChild);
+  while (tbody.rows.length > 8) tbody.deleteRow(-1);
+  const b = document.getElementById('txnBadge');
+  if (b) b.textContent = parseInt(b.textContent||0)+1;
+}
+
+/* ── Apply stats to cards + charts ────────── */
+function applyStats(s) {
+  if (!s) return;
+  document.getElementById('valIncome').textContent  = SYM+fmt(s.income);
+  document.getElementById('valExpense').textContent = SYM+fmt(s.expense);
+  const bel = document.getElementById('valBalance');
+  bel.textContent = SYM+fmt(Math.abs(s.balance));
+  bel.style.color = s.balance>=0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('lblBalance').textContent = s.balance>=0?'Surplus':'Deficit';
+  document.getElementById('valSavings').textContent = s.savings_pct+'%';
+  if (s.category_data && Object.keys(s.category_data).length > 0) {
+    catData = s.category_data;
+    if (pChart) pChart.destroy();
+    const w = document.getElementById('pieWrap');
+    if (!w.querySelector('canvas')) w.innerHTML = '<canvas id="pieChart"></canvas>';
+    pChart = buildPieChart('pieChart', catData);
+  }
+}
+
+/* ── Helpers ───────────────────────────────── */
+const v    = id => document.getElementById(id).value.trim();
+const fmt  = n  => Math.round(n).toLocaleString('en-IN');
+const post = (url, data) =>
+  fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r => r.json());
+
+function setErr(id, msg) {
+  const e = document.getElementById(id);
+  e.textContent = msg; e.style.display = 'block';
+}
+function clearFields(ids) { ids.forEach(id => { document.getElementById(id).value=''; }); }
+function setBtnLoad(id, loading, html='') {
+  const b = document.getElementById(id);
+  b.disabled = loading;
+  if (loading) b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+  else if (html) b.innerHTML = html;
+}
+function toast(icon, msg, err=false) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastMsg').textContent  = msg;
+  t.className = err ? 'show err' : 'show';
+  setTimeout(() => t.className = '', 3200);
+}
+</script>
+{% endblock %}
